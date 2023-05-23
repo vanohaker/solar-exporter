@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"flag"
 	"fmt"
 	"log"
@@ -10,13 +9,13 @@ import (
 	"os"
 	"runtime"
 	"runtime/debug"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/tarm/serial"
+	"github.com/vanohaker/solar-exporter/invertor"
+	"github.com/vanohaker/solar-exporter/settings"
 )
 
 func getBuildInfo() (string, string, bool) {
@@ -37,53 +36,6 @@ func getBuildInfo() (string, string, bool) {
 		}
 	}
 	return commitHash, commitTime, dirtyBuild
-}
-
-func getEnv(key, defaultValue string) string {
-	value, ok := os.LookupEnv(key)
-	if !ok {
-		return defaultValue
-	}
-	return value
-}
-
-func initSerialPort(portname string, br int) (*serial.Port, error) {
-	serialPort := &serial.Config{Name: portname, Baud: br}
-	session, err := serial.OpenPort(serialPort)
-	if err != nil {
-		log.Fatal(err)
-		return nil, err
-	}
-	return session, nil
-}
-
-func writeSerialData(data []byte, session *serial.Port) (err error) {
-	_, err = session.Write(data)
-	if err != nil {
-		log.Fatal(err)
-		return err
-	}
-	return nil
-}
-
-func readSerialData(session *serial.Port, channel chan []byte) {
-	buf := make([]byte, 32)
-	var readCount int
-	message := []byte{}
-	for {
-		data, err := session.Read(buf)
-		if err != nil {
-			log.Fatal(err)
-		}
-		readCount++
-		message = append(message, buf[:data]...)
-		if bytes.Equal(buf[data-1:data], []byte{0x0d}) {
-			// fmt.Printf("message : %s\n", string(message))
-			channel <- message
-			message = []byte{}
-			// close(channel)
-		}
-	}
 }
 
 func parseUnixSocketAddress(address string) (string, string, error) {
@@ -123,91 +75,59 @@ func getListener(listenAddress string) (net.Listener, error) {
 	return listener, nil
 }
 
-var (
-	version string
-
-	// default vars values
-	defaultSerialPortName        = getEnv("SERIAL_PORT", "/dev/ttyS0")
-	defaultSerialPortBaudRate, _ = strconv.Atoi(getEnv("SERIAL_PORT_BAUD_RATE", "19200"))
-	defaultMetricsPath           = getEnv("METRICS_PATH", "/metrics")
-	defaultListenAddr            = getEnv("LISTEN_ADDRESS", "0.0.0.0:9678")
-
-	serialPortName     = flag.String("serialPortName", defaultSerialPortName, "Serial port name of the connected inverter")
-	serialPortBaudRate = flag.Int("serialPortBaudRate", defaultSerialPortBaudRate, "Serial port speed")
-	displayVersion     = flag.Bool("version", false, "Display SmartWatt ECO exporter version")
-	metricsPath        = flag.String("metricsPath", defaultMetricsPath, "Url with metrics data")
-	listenAddr         = flag.String("webListenAddr", defaultListenAddr, "TCP port where exporter started")
-)
-
 func main() {
 	flag.Parse()
 
 	commitHash, commitTime, dirtyBuild := getBuildInfo()
 	arch := fmt.Sprintf("%v/%v", runtime.GOOS, runtime.GOARCH)
 
-	log.Printf("SmartWatt ECO Prometheus Exporter version=%v commit=%v date=%v, dirty=%v, arch=%v, go=%v\n", version, commitHash, commitTime, dirtyBuild, arch, runtime.Version())
+	log.Printf("SmartWatt ECO Prometheus Exporter version=%v commit=%v date=%v, dirty=%v, arch=%v, go=%v\n", settings.Version, commitHash, commitTime, dirtyBuild, arch, runtime.Version())
 
-	if *displayVersion {
+	if *settings.DisplayVersion {
 		os.Exit(0)
 	}
 
 	log.Println("Starting...")
 	registry := prometheus.NewRegistry()
 
-	// buildInfoMetric := prometheus.NewGauge(
-	// 	prometheus.GaugeOpts{
-	// 		Name: "nginxexporter_build_info",
-	// 		Help: "Exporter build information",
-	// 	},
-	// )
-	// buildInfoMetric.Set(1)
+	buildInfoMetric := prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "nginxexporter_build_info",
+			Help: "Exporter build information",
+		},
+	)
+	buildInfoMetric.Set(1)
 
-	// registry.MustRegister(buildInfoMetric)
+	registry.MustRegister(buildInfoMetric)
 
 	srv := http.Server{
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	http.Handle(*metricsPath, promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
+	http.Handle(*settings.MetricsPath, promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		_, err := fmt.Fprintf(w, `<!DOCTYPE html>
 			<title>SmartWatt ECO Exporter</title>
 			<h1>SmartWatt ECO Exporter</h1>
 			<p><a href=%q>Metrics</a></p>`,
-			*metricsPath)
+			*settings.MetricsPath)
 		if err != nil {
 			log.Printf("Error while sending a response for the '/' path: %v", err)
 		}
 	})
 
-	listener, err := getListener(*listenAddr)
+	listener, err := getListener(*settings.ListenAddr)
 	if err != nil {
 		log.Fatalf("Could not create listener: %v", err)
 	}
 
+	startChannel := make(chan bool)
+
+	go invertor.InitDataCollection(startChannel, *settings.SerialPortName, *settings.SerialPortBaudRate)
+
+	startChannel <- true
+
 	log.Println("SmartWatt ECO exporter started")
 	log.Fatal(srv.Serve(listener))
-
-	// initCommands := []byte{0x51, 0x50, 0x49, 0xBE, 0xAC, 0x0D}
-	getVoltages := []byte{0x51, 0x50, 0x49, 0x52, 0x49, 0xF8, 0x54, 0x0D}
-
-	channel := make(chan []byte)
-	session, _ := initSerialPort(*serialPortName, *serialPortBaudRate)
-	go readSerialData(session, channel)
-
-	go func() {
-		for {
-			_ = writeSerialData(getVoltages, session)
-			for {
-				val, ok := <-channel
-				if ok {
-					time.Sleep(4 * time.Second)
-					log.Printf("%s\n", string(val[1:len(val)-1]))
-					break
-				}
-			}
-		}
-	}()
-
 }
