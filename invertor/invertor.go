@@ -24,34 +24,40 @@ func initSerialPort(portname string, br int) (*serial.Port, error) {
 	return session, nil
 }
 
-func writeSerialData(session *serial.Port, channel chan []byte) {
+func writeSerialData(session *serial.Port, channel <-chan []byte) {
 	val, ok := <-channel
+	log.Printf("Debug! Start write channel: cap(%v), len(%v), bytes = %x, str = %s", cap(channel), len(channel), val, val)
 	if ok {
-		fmt.Printf("val = %x, ok = %s\n", val, strconv.FormatBool(ok))
+		log.Printf("Debug! Send: %x, status: %s\n", val, strconv.FormatBool(ok))
 		writeStatus, err := session.Write(val)
 		if err != nil {
 			log.Fatal(err)
 		}
-		fmt.Printf("Write CODE : %d\n", writeStatus)
+		log.Printf("Debug! WriteStatus code: %d\n", writeStatus)
+		// close(channel)
 	}
+	log.Printf("Debug! End write channel: cap(%v), len(%v), bytes = %x, str = %s", cap(channel), len(channel), val, val)
 }
 
 func readSerialData(session *serial.Port, channel chan []byte) {
 	buf := make([]byte, 32)
 	var readCount int
 	message := []byte{}
+	log.Printf("Debug! Start read serial port. cap(%v), len(%v), message = %x, readCount = %v", cap(channel), len(channel), message, readCount)
 	for {
-		fmt.Printf("123\n")
+		fmt.Println("Read 1")
 		data, err := session.Read(buf)
+		fmt.Println("Read 2")
 		if err != nil {
 			log.Fatal(err)
 		}
 		readCount++
 		message = append(message, buf[:data]...)
 		if bytes.Equal(buf[data-1:data], []byte{0x0d}) {
-			// fmt.Printf("message : %s\n", string(message))
+			log.Printf("Debug! ReadChannel: cap(%v), len(%v), message = %x, readCount = %v", cap(channel), len(channel), message, readCount)
 			channel <- message
 			message = []byte{}
+			readCount = 0
 			// close(channel)
 		}
 	}
@@ -64,14 +70,15 @@ func InitDataCollection(start chan bool, serialPortName string, serialBaudRate i
 		if err != nil {
 			log.Fatalln(err)
 		}
-		writeChannel := make(chan []byte)
-		ReadChannel := make(chan []byte)
-		go readSerialData(invertorSession, ReadChannel)
-		go writeSerialData(invertorSession, writeChannel)
-		writeChannel <- getInit
-		val, ok := <-ReadChannel
-		if ok {
-			fmt.Printf("%s", val)
+		roChannel := make(chan []byte, 2)
+		// woChannel := make(chan []byte, 2)
+		for {
+			go readSerialData(invertorSession, roChannel)
+			log.Printf("Debug! Serial port data reccived! val = %x", <-roChannel)
+			fmt.Println("!2333")
+			// go writeSerialData(invertorSession, woChannel)
+			// woChannel <- getInit
+			// time.Sleep(4 * time.Second)
 		}
 	}
 }
