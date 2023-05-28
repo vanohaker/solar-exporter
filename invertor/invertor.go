@@ -2,16 +2,24 @@ package invertor
 
 import (
 	"bytes"
-	"fmt"
 	"log"
 	"strconv"
+	"time"
 
 	"github.com/tarm/serial"
+	"github.com/vanohaker/solar-exporter/settings"
 )
 
 var (
-	getInit = []byte{0x51, 0x50, 0x49, 0xBE, 0xAC, 0x0D}
-	// getVoltages = []byte{0x51, 0x50, 0x49, 0x52, 0x49, 0xF8, 0x54, 0x0D}
+	commands = &map[string][]byte{
+		// "getInit":     {0x51, 0x50, 0x49, 0xBE, 0xAC, 0x0D},
+		"getSettings": {0x51, 0x50, 0x49, 0x52, 0x49, 0xF8, 0x54, 0x0D},
+	}
+	invdata       []byte
+	SerialReadMsg []byte
+
+// getInit     = []byte{0x51, 0x50, 0x49, 0xBE, 0xAC, 0x0D}
+// getVoltages = []byte{0x51, 0x50, 0x49, 0x52, 0x49, 0xF8, 0x54, 0x0D}
 )
 
 func initSerialPort(portname string, br int) (*serial.Port, error) {
@@ -26,39 +34,51 @@ func initSerialPort(portname string, br int) (*serial.Port, error) {
 
 func writeSerialData(session *serial.Port, channel <-chan []byte) {
 	val, ok := <-channel
-	log.Printf("Debug! Start write channel: cap(%v), len(%v), bytes = %x, str = %s", cap(channel), len(channel), val, val)
+	if *settings.DebugMode {
+		log.Printf("Debug! Start write channel: cap(%v), len(%v), bytes = %x, str = %s", cap(channel), len(channel), val, val)
+	}
 	if ok {
-		log.Printf("Debug! Send: %x, status: %s\n", val, strconv.FormatBool(ok))
+		if *settings.DebugMode {
+			log.Printf("Debug! Send: %x, status: %s\n", val, strconv.FormatBool(ok))
+		}
 		writeStatus, err := session.Write(val)
 		if err != nil {
 			log.Fatal(err)
 		}
-		log.Printf("Debug! WriteStatus code: %d\n", writeStatus)
-		// close(channel)
+		if *settings.DebugMode {
+			log.Printf("Debug! WriteStatus code: %d\n", writeStatus)
+		}
 	}
-	log.Printf("Debug! End write channel: cap(%v), len(%v), bytes = %x, str = %s", cap(channel), len(channel), val, val)
+	if *settings.DebugMode {
+		log.Printf("Debug! End write channel: cap(%v), len(%v), bytes = %x, str = %s", cap(channel), len(channel), val, val)
+	}
 }
 
-func readSerialData(session *serial.Port, channel chan []byte) {
+func readSerialData(session *serial.Port) {
 	buf := make([]byte, 32)
 	var readCount int
-	message := []byte{}
-	log.Printf("Debug! Start read serial port. cap(%v), len(%v), message = %x, readCount = %v", cap(channel), len(channel), message, readCount)
+	rawmessage := []byte{}
+	if *settings.DebugMode {
+		log.Printf("Debug! Start read serial port, message = %x, readCount = %v", rawmessage, readCount)
+	}
 	for {
-		fmt.Println("Read 1")
 		data, err := session.Read(buf)
-		fmt.Println("Read 2")
 		if err != nil {
 			log.Fatal(err)
 		}
 		readCount++
-		message = append(message, buf[:data]...)
+		rawmessage = append(rawmessage, buf[:data]...)
 		if bytes.Equal(buf[data-1:data], []byte{0x0d}) {
-			log.Printf("Debug! ReadChannel: cap(%v), len(%v), message = %x, readCount = %v", cap(channel), len(channel), message, readCount)
-			channel <- message
-			message = []byte{}
+			if *settings.DebugMode {
+				log.Printf("Debug! ReadChannel: message = %x, readCount = %v", rawmessage, readCount)
+			}
+			SerialReadMsg = rawmessage
+			rawmessage = []byte{}
 			readCount = 0
 			// close(channel)
+		}
+		if readCount > 256 {
+			log.Printf("Timeout")
 		}
 	}
 }
@@ -70,15 +90,18 @@ func InitDataCollection(start chan bool, serialPortName string, serialBaudRate i
 		if err != nil {
 			log.Fatalln(err)
 		}
-		roChannel := make(chan []byte, 2)
-		// woChannel := make(chan []byte, 2)
+		woChannel := make(chan []byte, 2)
+		// readWG = &sync.WaitGroup{}
 		for {
-			go readSerialData(invertorSession, roChannel)
-			log.Printf("Debug! Serial port data reccived! val = %x", <-roChannel)
-			fmt.Println("!2333")
-			// go writeSerialData(invertorSession, woChannel)
-			// woChannel <- getInit
-			// time.Sleep(4 * time.Second)
+			for name, data := range *commands {
+				go readSerialData(invertorSession)
+				go writeSerialData(invertorSession, woChannel)
+				log.Printf("Sand! name %s, data: %x", name, data)
+				woChannel <- data
+				log.Printf("Get! name: %s, data = %s", name, SerialReadMsg)
+				time.Sleep(time.Second * 3)
+			}
 		}
+
 	}
 }
