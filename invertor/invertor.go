@@ -11,11 +11,15 @@ import (
 )
 
 var (
-	commands = &map[string][]byte{
-		// "getInit":     {0x51, 0x50, 0x49, 0xBE, 0xAC, 0x0D},
-		"getSettings": {0x51, 0x50, 0x49, 0x52, 0x49, 0xF8, 0x54, 0x0D},
+	initialization = &map[string][]byte{
+		// "QPI": {0x51, 0x50, 0x49, 0xBE, 0xAC, 0x0D},
+		// "QGMNI)": {0x51, 0x47, 0x4D, 0x4E, 0x49, 0x29, 0x0D},
+		"QPIGS": {0x51, 0x50, 0x49, 0x47, 0x53, 0xB7, 0xA9, 0x0D},
 	}
-	invdata       []byte
+	monitoring = &map[string][]byte{
+		// "getSettings": {0x51, 0x50, 0x49, 0x52, 0x49, 0xF8, 0x54, 0x0D},
+		// "getVoltage": {0x51, 0x50, 0x49, 0x47, 0x53, 0xB7, 0xA9, 0x0D},
+	}
 	SerialReadMsg []byte
 
 // getInit     = []byte{0x51, 0x50, 0x49, 0xBE, 0xAC, 0x0D}
@@ -69,12 +73,11 @@ func readSerialData(session *serial.Port) {
 		readCount++
 		rawmessage = append(rawmessage, buf[:data]...)
 		if bytes.Equal(buf[data-1:data], []byte{0x0d}) {
-			if *settings.DebugMode {
-				log.Printf("Debug! ReadChannel: message = %x, readCount = %v", rawmessage, readCount)
-			}
+			log.Printf("Debug! ReadChannel: message = %x, readCount = %v", rawmessage, readCount)
 			SerialReadMsg = rawmessage
 			rawmessage = []byte{}
 			readCount = 0
+
 			// close(channel)
 		}
 		if readCount > 256 {
@@ -91,10 +94,9 @@ func InitDataCollection(start chan bool, serialPortName string, serialBaudRate i
 			log.Fatalln(err)
 		}
 		woChannel := make(chan []byte, 2)
-		// readWG = &sync.WaitGroup{}
+		go readSerialData(invertorSession)
 		for {
-			for name, data := range *commands {
-				go readSerialData(invertorSession)
+			for name, data := range *initialization {
 				go writeSerialData(invertorSession, woChannel)
 				log.Printf("Sand! name %s, data: %x", name, data)
 				woChannel <- data

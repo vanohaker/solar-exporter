@@ -19,7 +19,7 @@ var (
 
 	// default vars values
 	defaultSerialPortName        = getEnv("SERIAL_PORT", "/dev/ttyS0")
-	defaultSerialPortBaudRate, _ = strconv.Atoi(getEnv("SERIAL_PORT_BAUD_RATE", "19200"))
+	defaultSerialPortBaudRate, _ = strconv.Atoi(getEnv("SERIAL_PORT_BAUD_RATE", "9600"))
 	defaultMetricsPath           = getEnv("METRICS_PATH", "/metrics")
 	defaultListenAddr            = getEnv("LISTEN_ADDRESS", "0.0.0.0:9678")
 
