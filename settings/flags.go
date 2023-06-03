@@ -22,6 +22,7 @@ var (
 	defaultSerialPortBaudRate, _ = strconv.Atoi(getEnv("SERIAL_PORT_BAUD_RATE", "9600"))
 	defaultMetricsPath           = getEnv("METRICS_PATH", "/metrics")
 	defaultListenAddr            = getEnv("LISTEN_ADDRESS", "0.0.0.0:9678")
+	defaultScrapeInterval, _     = strconv.Atoi(getEnv("SCRAPE_INTERVAL", "5"))
 
 	SerialPortName     = flag.String("serialPortName", defaultSerialPortName, "Serial port name of the connected inverter")
 	SerialPortBaudRate = flag.Int("serialPortBaudRate", defaultSerialPortBaudRate, "Serial port speed")
@@ -29,4 +30,5 @@ var (
 	DebugMode          = flag.Bool("debug", false, "Debug mode")
 	MetricsPath        = flag.String("metricsPath", defaultMetricsPath, "Url with metrics data")
 	ListenAddr         = flag.String("webListenAddr", defaultListenAddr, "TCP port where exporter started")
+	ScrapeInterval     = flag.Int("scrapeInterval", defaultScrapeInterval, "Scrape interval in secconds")
 )

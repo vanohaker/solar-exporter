@@ -73,8 +73,10 @@ func readSerialData(session *serial.Port) {
 		readCount++
 		rawmessage = append(rawmessage, buf[:data]...)
 		if bytes.Equal(buf[data-1:data], []byte{0x0d}) {
-			log.Printf("Debug! ReadChannel: message = %x, readCount = %v", rawmessage, readCount)
-			SerialReadMsg = rawmessage
+			if *settings.DebugMode {
+				log.Printf("Debug! ReadChannel: message = %x, readCount = %v", rawmessage, readCount)
+			}
+			ParseInvertorVoltages(rawmessage)
 			rawmessage = []byte{}
 			readCount = 0
 
@@ -100,8 +102,8 @@ func InitDataCollection(start chan bool, serialPortName string, serialBaudRate i
 				go writeSerialData(invertorSession, woChannel)
 				log.Printf("Sand! name %s, data: %x", name, data)
 				woChannel <- data
-				log.Printf("Get! name: %s, data = %s", name, SerialReadMsg)
-				time.Sleep(time.Second * 3)
+				// log.Printf("Get! name: %s, data = %s", name, SerialReadMsg)
+				time.Sleep(time.Second * time.Duration(*settings.ScrapeInterval))
 			}
 		}
 

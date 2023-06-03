@@ -9,6 +9,7 @@ import (
 	"os"
 	"runtime"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"time"
 
@@ -92,8 +93,16 @@ func main() {
 
 	buildInfoMetric := prometheus.NewGauge(
 		prometheus.GaugeOpts{
-			Name: "nginxexporter_build_info",
+			Name: "solarexporter_build_info",
 			Help: "Exporter build information",
+			ConstLabels: prometheus.Labels{
+				"version": settings.Version,
+				"commit":  commitHash,
+				"date":    commitTime,
+				"dirty":   strconv.FormatBool(dirtyBuild),
+				"arch":    arch,
+				"go":      runtime.Version(),
+			},
 		},
 	)
 	buildInfoMetric.Set(1)
