@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/tarm/serial"
 	"github.com/vanohaker/solar-exporter/settings"
 )
@@ -58,7 +59,7 @@ func writeSerialData(session *serial.Port, channel <-chan []byte) {
 	}
 }
 
-func readSerialData(session *serial.Port) {
+func readSerialData(registry *prometheus.Registry, session *serial.Port) {
 	buf := make([]byte, 32)
 	var readCount int
 	rawmessage := []byte{}
@@ -76,10 +77,11 @@ func readSerialData(session *serial.Port) {
 			if *settings.DebugMode {
 				log.Printf("Debug! ReadChannel: message = %x, readCount = %v", rawmessage, readCount)
 			}
-			ParseInvertorVoltages(rawmessage)
+			// ParseInvertorVoltages(rawmessage)
 			rawmessage = []byte{}
 			readCount = 0
 
+			// log.Print(data)
 			// close(channel)
 		}
 		if readCount > 256 {
@@ -88,7 +90,7 @@ func readSerialData(session *serial.Port) {
 	}
 }
 
-func InitDataCollection(start chan bool, serialPortName string, serialBaudRate int) {
+func InitDataCollection(registry *prometheus.Registry, start chan bool, serialPortName string, serialBaudRate int) {
 	if <-start {
 		log.Println("Start collect invertor data")
 		invertorSession, err := initSerialPort(serialPortName, serialBaudRate)
@@ -96,11 +98,11 @@ func InitDataCollection(start chan bool, serialPortName string, serialBaudRate i
 			log.Fatalln(err)
 		}
 		woChannel := make(chan []byte, 2)
-		go readSerialData(invertorSession)
+		go readSerialData(registry, invertorSession)
 		for {
 			for name, data := range *initialization {
 				go writeSerialData(invertorSession, woChannel)
-				log.Printf("Sand! name %s, data: %x", name, data)
+				log.Printf("Sand! name: %s, data: %x", name, data)
 				woChannel <- data
 				// log.Printf("Get! name: %s, data = %s", name, SerialReadMsg)
 				time.Sleep(time.Second * time.Duration(*settings.ScrapeInterval))

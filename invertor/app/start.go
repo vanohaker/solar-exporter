@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"flag"
@@ -76,7 +76,7 @@ func getListener(listenAddress string) (net.Listener, error) {
 	return listener, nil
 }
 
-func main() {
+func Run() {
 	flag.Parse()
 
 	commitHash, commitTime, dirtyBuild := getBuildInfo()
@@ -109,6 +109,14 @@ func main() {
 
 	registry.MustRegister(buildInfoMetric)
 
+	// inputACVoltageMetrics := prometheus.NewGauge(
+	// 	prometheus.GaugeOpts{
+	// 		Name: "input_ac_voltage",
+	// 		Help: "Input AC voltage from city",
+	// 	},
+	// )
+	// inputACVoltageMetrics.Set(invertor.VoltageData.inputACvoltage)
+
 	srv := http.Server{
 		ReadHeaderTimeout: 5 * time.Second,
 	}
@@ -133,7 +141,7 @@ func main() {
 
 	startChannel := make(chan bool)
 
-	go invertor.InitDataCollection(startChannel, *settings.SerialPortName, *settings.SerialPortBaudRate)
+	go invertor.InitDataCollection(registry, startChannel, *settings.SerialPortName, *settings.SerialPortBaudRate)
 
 	startChannel <- true
 
