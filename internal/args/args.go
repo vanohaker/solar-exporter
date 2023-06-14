@@ -1,4 +1,4 @@
-package settings
+package args
 
 import (
 	"flag"
@@ -18,7 +18,7 @@ var (
 	Version string
 
 	// default vars values
-	defaultSerialPortName        = getEnv("SERIAL_PORT", "/dev/ttyS0")
+	defaultSerialPortName        = getEnv("SERIAL_PORT", "/dev/ttyUSB0")
 	defaultSerialPortBaudRate, _ = strconv.Atoi(getEnv("SERIAL_PORT_BAUD_RATE", "9600"))
 	defaultMetricsPath           = getEnv("METRICS_PATH", "/metrics")
 	defaultListenAddr            = getEnv("LISTEN_ADDRESS", "0.0.0.0:9678")

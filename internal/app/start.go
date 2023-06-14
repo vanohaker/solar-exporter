@@ -15,8 +15,8 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/vanohaker/solar-exporter/invertor"
-	"github.com/vanohaker/solar-exporter/settings"
+	"github.com/vanohaker/solar-exporter/internal/args"
+	"github.com/vanohaker/solar-exporter/pkg/smartwatt"
 )
 
 func getBuildInfo() (string, string, bool) {
@@ -82,13 +82,14 @@ func Run() {
 	commitHash, commitTime, dirtyBuild := getBuildInfo()
 	arch := fmt.Sprintf("%v/%v", runtime.GOOS, runtime.GOARCH)
 
-	log.Printf("SmartWatt ECO Prometheus Exporter version=%v commit=%v date=%v, dirty=%v, arch=%v, go=%v\n", settings.Version, commitHash, commitTime, dirtyBuild, arch, runtime.Version())
+	log.Printf("SmartWatt ECO Prometheus Exporter version=%v commit=%v date=%v, dirty=%v, arch=%v, go=%v\n", args.Version, commitHash, commitTime, dirtyBuild, arch, runtime.Version())
 
-	if *settings.DisplayVersion {
+	if *args.DisplayVersion {
 		os.Exit(0)
 	}
 
-	log.Println("Starting...")
+	log.Println("Starting prometheus metrics builder")
+
 	registry := prometheus.NewRegistry()
 
 	buildInfoMetric := prometheus.NewGauge(
@@ -96,7 +97,7 @@ func Run() {
 			Name: "solarexporter_build_info",
 			Help: "Exporter build information",
 			ConstLabels: prometheus.Labels{
-				"version": settings.Version,
+				"version": args.Version,
 				"commit":  commitHash,
 				"date":    commitTime,
 				"dirty":   strconv.FormatBool(dirtyBuild),
@@ -106,44 +107,36 @@ func Run() {
 		},
 	)
 	buildInfoMetric.Set(1)
-
 	registry.MustRegister(buildInfoMetric)
 
-	// inputACVoltageMetrics := prometheus.NewGauge(
-	// 	prometheus.GaugeOpts{
-	// 		Name: "input_ac_voltage",
-	// 		Help: "Input AC voltage from city",
-	// 	},
-	// )
-	// inputACVoltageMetrics.Set(invertor.VoltageData.inputACvoltage)
+	log.Println("Starting serial port communications")
+
+	// var voltage = new(float64)
+	// invertor.GetVoltages(serialsession, voltage)
+
+	go smartwatt.StartColllect(registry)
 
 	srv := http.Server{
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	http.Handle(*settings.MetricsPath, promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
+	http.Handle(*args.MetricsPath, promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		_, err := fmt.Fprintf(w, `<!DOCTYPE html>
 			<title>SmartWatt ECO Exporter</title>
 			<h1>SmartWatt ECO Exporter</h1>
 			<p><a href=%q>Metrics</a></p>`,
-			*settings.MetricsPath)
+			*args.MetricsPath)
 		if err != nil {
 			log.Printf("Error while sending a response for the '/' path: %v", err)
 		}
 	})
 
-	listener, err := getListener(*settings.ListenAddr)
+	listener, err := getListener(*args.ListenAddr)
 	if err != nil {
 		log.Fatalf("Could not create listener: %v", err)
 	}
-
-	startChannel := make(chan bool)
-
-	go invertor.InitDataCollection(registry, startChannel, *settings.SerialPortName, *settings.SerialPortBaudRate)
-
-	startChannel <- true
 
 	log.Println("SmartWatt ECO exporter started")
 	log.Fatal(srv.Serve(listener))
