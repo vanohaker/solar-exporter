@@ -40,7 +40,7 @@ func ParseVoltage(message []byte) invertorVoltageData {
 	OutApparentPower, _ := strconv.Atoi(matchGroupsData[r.SubexpIndex("OutApparentPower")])
 	OutActivePower, _ := strconv.Atoi(matchGroupsData[r.SubexpIndex("OutActivePower")])
 	LoadPercent, _ := strconv.Atoi(matchGroupsData[r.SubexpIndex("LoadPercent")])
-	BatVoltage, _ := strconv.ParseFloat(matchGroupsData[r.SubexpIndex("OutACfrq")], 64)
+	BatVoltage, _ := strconv.ParseFloat(matchGroupsData[r.SubexpIndex("BatVoltage")], 64)
 	ChargeCurrent, _ := strconv.Atoi(matchGroupsData[r.SubexpIndex("ChargeCurrent")])
 	ChargePercent, _ := strconv.Atoi(matchGroupsData[r.SubexpIndex("ChargePercent")])
 	InvertorTemp, _ := strconv.Atoi(matchGroupsData[r.SubexpIndex("InvertorTemp")])

@@ -1,0 +1,9 @@
+version: "3.9"
+services:
+  web:
+    image: solarexporter:latest
+    ports:
+      - "9678:9678"
+    devices:
+      - "/dev/ttyUSB0:/dev/ttyUSB0"
+    restart: always
