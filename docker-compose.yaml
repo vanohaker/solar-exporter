@@ -1,9 +1,25 @@
-version: "3.9"
+# version: "3.9"
+
+volumes:
+  prometheus_data: {}
+
 services:
-  web:
-    image: solarexporter:latest
+  # web:
+  #   image: solarexporter:latest
+  #   ports:
+  #     - "9678:9678"
+  #   devices:
+  #     - "/dev/ttyUSB0:/dev/ttyUSB0"
+  #   restart: always
+  prometheus:
+    image: prom/prometheus:v2.36.2
+    volumes:
+    - ./example/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    - "prometheus_data:/prometheus"
+    command:
+    - '--config.file=/etc/prometheus/prometheus.yml'
+    - '--storage.tsdb.path=/prometheus'
     ports:
-      - "9678:9678"
-    devices:
-      - "/dev/ttyUSB0:/dev/ttyUSB0"
-    restart: always
+    - "9090:9090"
+    environment:
+      TZ: "Europe/Moscow"

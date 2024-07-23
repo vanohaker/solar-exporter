@@ -2,39 +2,35 @@ package app
 
 import (
 	"fmt"
-	"runtime"
 
 	"github.com/gofiber/fiber/v2"
 	fiberlog "github.com/gofiber/fiber/v2/log"
-	"github.com/prometheus/client_golang/prometheus"
+	"github.com/gofiber/fiber/v2/middleware/adaptor"
+	"github.com/gofiber/fiber/v2/middleware/logger"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/vanohaker/solar-exporter/internal/options"
+	"github.com/vanohaker/solar-exporter/internal/solarmetrics"
 )
 
 func Run() {
-	arch := fmt.Sprintf("%v/%v", runtime.GOOS, runtime.GOARCH)
+	app := fiber.New(fiber.Config{
+		Immutable: true,
+	})
+	prometheus_instance := solarmetrics.StartPrometheus()
+	app.Use(
+		logger.New(
+			logger.Config{
+				Format: "${time} | ${status} | ${latency} | ${ip} | ${method} | ${path} | ${queryParams} | ${error}\n",
+			},
+		),
+		prometheus_instance.Middleware,
+	)
 	config, err := options.LoadConfig()
 	if err != nil {
 		fiberlog.Fatal(err.Error())
 	}
-	app := fiber.New(fiber.Config{
-		Immutable: true,
-	})
-	fiberlog.Infof("SmartWatt ECO Prometheus Exporter, arch=%v, go=%v\n", arch, runtime.Version())
 
-	registry := prometheus.NewRegistry()
-
-	buildInfoMetric := prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "smartwatteco_build_info",
-			Help: "SmartWatt ECO Exporter build information",
-			ConstLabels: prometheus.Labels{
-				"arch": arch,
-				"go":   runtime.Version(),
-			},
-		},
-	)
-	buildInfoMetric.Set(1)
-	registry.MustRegister(buildInfoMetric)
+	app.Get(config.Core.MetricsPath, adaptor.HTTPHandler(promhttp.Handler()))
 
 	app.Get("/", func(c *fiber.Ctx) error {
 		return c.SendString("/")

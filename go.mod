@@ -1,6 +1,6 @@
 module github.com/vanohaker/solar-exporter
 
-go 1.20
+go 1.22.5
 
 require (
 	github.com/prometheus/client_golang v1.15.1
