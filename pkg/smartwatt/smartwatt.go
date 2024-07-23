@@ -4,25 +4,148 @@ package smartwatt
 
 import (
 	"bytes"
+	"fmt"
 	"log"
-	"time"
+	"regexp"
+	"strconv"
 
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/tarm/serial"
-	"github.com/vanohaker/solar-exporter/internal/args"
-	"github.com/vanohaker/solar-exporter/internal/invertor"
 )
 
-func InitSerialPort(PortName string, baudRate int) (*serial.Port, error) {
-	serialConfig := &serial.Config{Name: PortName, Baud: baudRate}
-	serialSession, err := serial.OpenPort(serialConfig)
-	if err != nil {
-		return nil, err
-	}
-	return serialSession, nil
+type Commands struct {
+	MessageType string
+	RawCommand  []byte
 }
 
-func getData(serialSession *serial.Port, command []byte) []byte {
+type SmartWattEco struct {
+	// Порт через который получаются метрики
+	Port string
+	// Скорость порта
+	BaudRate int
+	// Указатель на открытый порт
+	Serial *serial.Port
+	// Велечина входящего напряжения в инвертор со стороны городской электросети
+	InputACvoltage float64
+	// Частота входящего напряжения со стороны городской электросети
+	InputACfrq float64
+	// Велеина выходного напряжения из инвертора в сторону нагрузки
+	OutACvoltage float64
+	// Частота выходного напряжения в сторону нагрузки
+	OutACfrq float64
+	// Полная можность воль-ампер
+	OutApparentPower float64
+	// Активная можность ватт
+	OutActivePower float64
+	// Процент загруженности инвертора
+	LoadPercent float64
+	// Напряжение батареи
+	BatVoltage float64
+	// Ток заряда
+	ChargeCurrent float64
+	// Процент заряда
+	ChargePercent float64
+	// Температура инвертора
+	InvertorTemp float64
+	// Ток с стлничной панели
+	ChargeSolarCurrent float64
+	// Напряжение первого канала с солничной панели
+	VoltageDCch1 float64
+	// Серийный номер инвертора
+	SerialNumber string
+}
+
+func parseSerialNumber(message []byte, s *SmartWattEco) {
+	r, err := regexp.Compile(`^\([0-9]{2}(?P<SerialNumber>[0-9]{14}).*`)
+	if err != nil {
+		log.Fatal(err)
+	}
+	mathGroupData := r.FindStringSubmatch(string(message))
+	if mathGroupData[r.SubexpIndex("SerialNumber")] == "" {
+		s.SerialNumber = "N/A"
+	} else {
+		s.SerialNumber = mathGroupData[r.SubexpIndex("SerialNumber")]
+	}
+}
+
+func parseVoltage(message []byte, s *SmartWattEco) {
+	// data := invertorVoltageData{}
+	r, err := regexp.Compile(`^\((?P<InputACvoltage>[0-9.]{3,}) (?P<InputACfrq>[0-9.]{2,}) (?P<OutACvoltage>[0-9.]{3,}) (?P<OutACfrq>[0-9.]{2,}) (?P<OutApparentPower>[0-9]{1,}) (?P<OutActivePower>[0-9]{1,}) (?P<LoadPercent>[0-9]{1,}) ... (?P<BatVoltage>[0-9.]{1,}) (?P<ChargeCurrent>[0-9]{1,}) (?P<ChargePercent>[0-9]{1,}) (?P<InvertorTemp>[0-9]{1,}) (?P<ChargeSolarCurrent>[0-9.]{1,}) (?P<VoltageDCch1>[0-9.]{1,}).*`)
+	if err != nil {
+		log.Fatal(err)
+	}
+	matchGroupsData := r.FindStringSubmatch(string(message)) // Значения групп без имён групп
+	s.InputACvoltage, err = strconv.ParseFloat(matchGroupsData[r.SubexpIndex("InputACvoltage")], 64)
+	if err != nil {
+		s.InputACvoltage = 0.0
+	}
+	s.InputACfrq, err = strconv.ParseFloat(matchGroupsData[r.SubexpIndex("InputACfrq")], 64)
+	if err != nil {
+		s.InputACfrq = 0.0
+	}
+	s.OutACvoltage, err = strconv.ParseFloat(matchGroupsData[r.SubexpIndex("OutACvoltage")], 64)
+	if err != nil {
+		s.OutACvoltage = 0.0
+	}
+	s.OutACfrq, err = strconv.ParseFloat(matchGroupsData[r.SubexpIndex("OutACfrq")], 64)
+	if err != nil {
+		s.OutACfrq = 0.0
+	}
+	// Мощность потребляемая нагрузкой водключенной к инвертору
+	s.OutApparentPower, err = strconv.ParseFloat(matchGroupsData[r.SubexpIndex("OutApparentPower")], 64)
+	if err != nil {
+		s.OutApparentPower = 0.0
+	}
+	s.OutActivePower, err = strconv.ParseFloat(matchGroupsData[r.SubexpIndex("OutActivePower")], 64)
+	if err != nil {
+		s.OutActivePower = 0.0
+	}
+	s.LoadPercent, err = strconv.ParseFloat(matchGroupsData[r.SubexpIndex("LoadPercent")], 64)
+	if err != nil {
+		s.LoadPercent = 0.0
+	}
+	s.BatVoltage, err = strconv.ParseFloat(matchGroupsData[r.SubexpIndex("BatVoltage")], 64)
+	if err != nil {
+		s.BatVoltage = 0.0
+	}
+	s.ChargeCurrent, err = strconv.ParseFloat(matchGroupsData[r.SubexpIndex("ChargeCurrent")], 64)
+	if err != nil {
+		s.ChargeCurrent = 0.0
+	}
+	s.ChargePercent, err = strconv.ParseFloat(matchGroupsData[r.SubexpIndex("ChargePercent")], 64)
+	if err != nil {
+		s.ChargePercent = 0.0
+	}
+	s.InvertorTemp, err = strconv.ParseFloat(matchGroupsData[r.SubexpIndex("InvertorTemp")], 64)
+	if err != nil {
+		s.InvertorTemp = 0.0
+	}
+	s.ChargeSolarCurrent, err = strconv.ParseFloat(matchGroupsData[r.SubexpIndex("ChargeSolarCurrent")], 64)
+	if err != nil {
+		s.ChargeSolarCurrent = 0.0
+	}
+	s.VoltageDCch1, err = strconv.ParseFloat(matchGroupsData[r.SubexpIndex("VoltageDCch1")], 64)
+	if err != nil {
+		s.VoltageDCch1 = 0.0
+	}
+}
+
+func Init(s SmartWattEco) (*SmartWattEco, error) {
+	serialSession, err := serial.OpenPort(&serial.Config{
+		Name: s.Port,
+		Baud: s.BaudRate,
+	})
+	if err != nil {
+		fmt.Println(err)
+		return nil, err
+	}
+	return &SmartWattEco{
+		Port:     s.Port,
+		BaudRate: s.BaudRate,
+		Serial:   serialSession,
+	}, nil
+}
+
+func getData(serial *serial.Port, command []byte) []byte {
 	message := []byte{}
 	readCH := make(chan []byte)
 	go func() {
@@ -30,7 +153,7 @@ func getData(serialSession *serial.Port, command []byte) []byte {
 		buf := make([]byte, 64)
 		readCount = 0
 		for {
-			data, err := serialSession.Read(buf)
+			data, err := serial.Read(buf)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -46,146 +169,23 @@ func getData(serialSession *serial.Port, command []byte) []byte {
 		}
 	}()
 
-	if _, err := serialSession.Write(command); err != nil {
+	if _, err := serial.Write(command); err != nil {
 		log.Fatal(err)
 	}
 	return <-readCH
 }
 
-func StartColllect(registry prometheus.Registerer) {
-	// InitMsg := &map[string][]byte{
-	// 	"QPI":    {0x51, 0x50, 0x49, 0xBE, 0xAC, 0x0D},
-	// 	"QGMNI)": {0x51, 0x47, 0x4D, 0x4E, 0x49, 0x29, 0x0D},
-	// }
-	loopMsg := &map[string][]byte{
-		"QPIGS": {0x51, 0x50, 0x49, 0x47, 0x53, 0xB7, 0xA9, 0x0D},
-	}
-	serialSession, err := invertor.InitSerialPort(*args.SerialPortName, *args.SerialPortBaudRate)
-	if err != nil {
-		log.Fatal(err)
-	}
+func (s *SmartWattEco) GetVoltage() {
+	result := getData(s.Serial, []byte{0x51, 0x50, 0x49, 0x47, 0x53, 0xB7, 0xA9, 0x0D})
+	parseVoltage(result, s)
+}
 
-	inputacvoltageMetric := prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "solar_invertor_input_ac_voltage",
-			Help: "Input voltage from city line",
-		},
-	)
-	registry.MustRegister(inputacvoltageMetric)
+func (s *SmartWattEco) GetSerialNumber() {
+	result := getData(s.Serial, []byte{0x51, 0x53, 0x49, 0x44, 0xBB, 0x05, 0x0D})
+	parseSerialNumber(result, s)
+}
 
-	inputacfreqMetric := prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "solar_invertor_input_ac_freq",
-			Help: "Input ac frequency from city line",
-		},
-	)
-	registry.MustRegister(inputacfreqMetric)
-
-	outacvoltageMetric := prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "solar_invertor_output_ac_voltage",
-			Help: "Output AC voltage from invertor to home line",
-		},
-	)
-	registry.MustRegister(outacvoltageMetric)
-
-	outacfreqMetric := prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "solar_invertor_output_ac_freq",
-			Help: "Output AC voltage frequency",
-		},
-	)
-	registry.MustRegister(outacfreqMetric)
-
-	outapperantpowerMetric := prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "solar_invertor_out_apperant_power",
-			Help: "The combination of reactive power and true power",
-		},
-	)
-	registry.MustRegister(outapperantpowerMetric)
-
-	outactivepowerMetrics := prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "solar_invertor_out_actual_power",
-			Help: "The actual amount of power being used",
-		},
-	)
-	registry.MustRegister(outactivepowerMetrics)
-
-	loadpercentMetrics := prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "solar_invertor_load_percent",
-			Help: "invertor load percent from max load",
-		},
-	)
-	registry.MustRegister(loadpercentMetrics)
-
-	batvoltageMetrics := prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "solar_invertor_bat_voltage",
-			Help: "Batary voltage",
-		},
-	)
-	registry.MustRegister(batvoltageMetrics)
-
-	chargecurrentMetrics := prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "solar_invertor_bat_charge_current",
-			Help: "Batary charge current",
-		},
-	)
-	prometheus.MustRegister(chargecurrentMetrics)
-
-	chargepercentMetrics := prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "solar_invertor_bat_charge_percent",
-			Help: "Batary charge percent",
-		},
-	)
-	prometheus.MustRegister(chargepercentMetrics)
-
-	invertortempMetrivs := prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "solar_invertor_temperature",
-			Help: "Invertor temperature",
-		},
-	)
-	registry.MustRegister(invertortempMetrivs)
-
-	chargesolarcurrentMetrics := prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "solar_invertor_solar_panel_charge_bat_current",
-			Help: "DC current from solar panel to charge batary",
-		},
-	)
-	registry.MustRegister(chargesolarcurrentMetrics)
-
-	ch1solarvoltageMetrics := prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "solar_invertor_solar_panel_chanel1_voltage",
-			Help: "Voltage from solar panel in channel 1",
-		},
-	)
-	registry.MustRegister(ch1solarvoltageMetrics)
-
-	for {
-		for _, command := range *loopMsg {
-			data := ParseVoltage(getData(serialSession, command))
-			inputacvoltageMetric.Set(data.InputACvoltage)
-			inputacfreqMetric.Set(data.InputACfrq)
-			outacvoltageMetric.Set(data.OutACvoltage)
-			outacfreqMetric.Set(data.OutACfrq)
-			outapperantpowerMetric.Set(float64(data.OutApparentPower))
-			outactivepowerMetrics.Set(float64(data.OutActivePower))
-			loadpercentMetrics.Set(float64(data.LoadPercent))
-			batvoltageMetrics.Set(data.BatVoltage)
-			chargecurrentMetrics.Set(float64(data.ChargeCurrent))
-			chargepercentMetrics.Set(float64(data.ChargePercent))
-			chargesolarcurrentMetrics.Set(data.ChargeSolarCurrent)
-			ch1solarvoltageMetrics.Set(data.VoltageDCch1)
-			log.Printf("Data : %v", data)
-			time.Sleep(time.Second * 4)
-		}
-	}
+func (s *SmartWattEco) GetRatingData() {
+	result := getData(s.Serial, []byte{0x51, 0x50, 0x49, 0x52, 0x49, 0xF8, 0x54, 0x0D})
+	fmt.Println(string(result))
 }

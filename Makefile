@@ -7,8 +7,11 @@ build:
 clean:
 	rm -rf ./dist/*
 
+create_platform:
+	docker buildx create --name solar_exporter --platform linux/386,linux/amd64,linux/arm/v6,linux/arm/v7,linux/arm64
+
 images:
-	docker buildx build --platform linux/amd64 -t vanohaker/solar-exporter .
+	docker buildx build --platform linux/386,linux/amd64,linux/arm/v6,linux/arm/v7,linux/arm64 -t vanohaker/solar-exporter . --load
 
 push:
-    docker buildx build --platform linux/amd64,linux/amd64/v2,linux/amd64/v3,linux/386,linux/arm64,linux/386,linux/arm/v5,linux/arm/v7,linux/mips64le -t vanohaker/solar-exporter . --push
+	docker buildx build --platform linux/amd64/v3,linux/386,linux/arm64,linux/arm/v6,linux/arm/v7,linux/mips64 -t vanohaker/solar-exporter . --push

@@ -3,3 +3,6 @@ main
 start.bat
 start.sh
 datasample
+dist
+prometheus
+tmp
