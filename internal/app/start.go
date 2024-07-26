@@ -16,7 +16,11 @@ func Run() {
 	app := fiber.New(fiber.Config{
 		Immutable: true,
 	})
-	prometheus_instance := solarmetrics.StartPrometheus()
+	config, err := options.LoadConfig()
+	if err != nil {
+		fiberlog.Fatal(err.Error())
+	}
+	prometheus_instance := solarmetrics.StartPrometheus(config)
 	app.Use(
 		logger.New(
 			logger.Config{
@@ -25,10 +29,6 @@ func Run() {
 		),
 		prometheus_instance.Middleware,
 	)
-	config, err := options.LoadConfig()
-	if err != nil {
-		fiberlog.Fatal(err.Error())
-	}
 
 	app.Get(config.Core.MetricsPath, adaptor.HTTPHandler(promhttp.Handler()))
 

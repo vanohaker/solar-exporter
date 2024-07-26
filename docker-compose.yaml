@@ -4,13 +4,15 @@ volumes:
   prometheus_data: {}
 
 services:
-  # web:
-  #   image: solarexporter:latest
-  #   ports:
-  #     - "9678:9678"
-  #   devices:
-  #     - "/dev/ttyUSB0:/dev/ttyUSB0"
-  #   restart: always
+  solar-exporter:
+    build: .
+    ports:
+      - "9560:9560"
+    volumes:
+      - "./config.yaml:/config.yaml"
+      - "/dev:/dev"
+    restart: always
+    privileged: true
   prometheus:
     image: prom/prometheus:v2.36.2
     volumes:

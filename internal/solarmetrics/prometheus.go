@@ -8,12 +8,14 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/vanohaker/solar-exporter/internal/options"
 	"github.com/vanohaker/solar-exporter/pkg/smartwatt"
 )
 
 type PrometheusInstance struct {
 	buildinfo           prometheus.Gauge
 	serialnumber        *prometheus.GaugeVec
+	devicestatus        *prometheus.GaugeVec
 	requestsTotal       *prometheus.CounterVec
 	inputVoltageAC      *prometheus.GaugeVec
 	inputVoltageACfrq   *prometheus.GaugeVec
@@ -32,7 +34,11 @@ type PrometheusInstance struct {
 
 var Prometheus *PrometheusInstance
 
-func StartPrometheus() *PrometheusInstance {
+func setMetricsName(config *options.ConfigYaml, metric string) string {
+	return fmt.Sprintf("%s_%s", config.Core.MetricsPrefix, metric)
+}
+
+func StartPrometheus(config *options.ConfigYaml) *PrometheusInstance {
 
 	build_info := promauto.NewGauge(
 		prometheus.GaugeOpts{
@@ -51,7 +57,7 @@ func StartPrometheus() *PrometheusInstance {
 	// this metric will store all requests sent to the server. Use this to get the rate of requests per minute or second
 	requests_total_counter := promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Name:        prometheus.BuildFQName("solar_invertor", "api", "requests_total"),
+			Name:        prometheus.BuildFQName(config.Core.MetricsPrefix, "api", "requests_total"),
 			Help:        "The total number of HTTP requests made",
 			ConstLabels: constLabels,
 		},
@@ -60,17 +66,26 @@ func StartPrometheus() *PrometheusInstance {
 
 	invertor_serialnumber := promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name:        "solar_invertor_serial_number",
+			Name:        setMetricsName(config, "serial_number"),
 			Help:        "Inverter serial number",
 			ConstLabels: constLabels,
 		},
 		[]string{"serialnumber"},
 	)
 
+	invertor_status := promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name:        setMetricsName(config, "status"),
+			Help:        "Invertor status",
+			ConstLabels: constLabels,
+		},
+		[]string{"port", "serialnumber", "status"},
+	)
+
 	// Входное перемиенное напряжение инвертора
 	invertor_input_voltage_ac := promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name:        "solar_invertor_input_voltage_ac",
+			Name:        setMetricsName(config, "input_voltage_ac"),
 			Help:        "Input voltage from city line",
 			ConstLabels: constLabels,
 		},
@@ -80,7 +95,7 @@ func StartPrometheus() *PrometheusInstance {
 	// Частота входящего напряжения сети
 	invertor_input_voltage_frequency := promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name:        "solar_invertor_input_voltage_ac_frequency",
+			Name:        setMetricsName(config, "input_voltage_ac_frequency"),
 			Help:        "Frequency of voltage supplied to the inverter from the city network",
 			ConstLabels: constLabels,
 		},
@@ -89,7 +104,7 @@ func StartPrometheus() *PrometheusInstance {
 
 	invertor_output_voltage_ac := promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name:        "solar_invertor_output_voltage_ac",
+			Name:        setMetricsName(config, "output_voltage_ac"),
 			Help:        "The magnitude of the output voltage towards the load",
 			ConstLabels: constLabels,
 		},
@@ -98,7 +113,7 @@ func StartPrometheus() *PrometheusInstance {
 
 	invertor_output_voltage_ac_frequency := promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name:        "solar_invertor_output_voltage_ac_frequency",
+			Name:        setMetricsName(config, "output_voltage_ac_frequency"),
 			Help:        "Inverter output voltage frequency",
 			ConstLabels: constLabels,
 		},
@@ -107,7 +122,7 @@ func StartPrometheus() *PrometheusInstance {
 
 	invertor_output_apparent_power := promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name:        "solar_invertor_output_apparent_power",
+			Name:        setMetricsName(config, "output_apparent_power"),
 			Help:        "Total integrated total power",
 			ConstLabels: constLabels,
 		},
@@ -116,7 +131,7 @@ func StartPrometheus() *PrometheusInstance {
 
 	invertor_output_active_power := promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name:        "solar_invertor_output_active_power",
+			Name:        setMetricsName(config, "output_active_power"),
 			Help:        "Active power",
 			ConstLabels: constLabels,
 		},
@@ -125,7 +140,7 @@ func StartPrometheus() *PrometheusInstance {
 
 	invertor_load_percent := promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name:        "solar_invertor_load_percent",
+			Name:        setMetricsName(config, "load_percent"),
 			Help:        "Load percentage per inverter",
 			ConstLabels: constLabels,
 		},
@@ -134,7 +149,7 @@ func StartPrometheus() *PrometheusInstance {
 
 	invertor_batary_voltage := promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name:        "solar_invertor_batary_voltage",
+			Name:        setMetricsName(config, "batary_voltage"),
 			Help:        "Inverter battery voltage",
 			ConstLabels: constLabels,
 		},
@@ -143,7 +158,7 @@ func StartPrometheus() *PrometheusInstance {
 
 	invertor_batary_charge_current := promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name:        "solar_invertor_charge_current",
+			Name:        setMetricsName(config, "charge_current"),
 			Help:        "Battery charge current",
 			ConstLabels: constLabels,
 		},
@@ -152,7 +167,7 @@ func StartPrometheus() *PrometheusInstance {
 
 	invertor_batary_charge_percent := promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name:        "solar_invertor_batary_charge_percent",
+			Name:        setMetricsName(config, "batary_charge_percent"),
 			Help:        "Battery percentage",
 			ConstLabels: constLabels,
 		},
@@ -161,7 +176,7 @@ func StartPrometheus() *PrometheusInstance {
 
 	invertor_temperature := promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name:        "solar_invertor_temperature",
+			Name:        setMetricsName(config, "temperature"),
 			Help:        "Inverter temperature",
 			ConstLabels: constLabels,
 		},
@@ -170,7 +185,7 @@ func StartPrometheus() *PrometheusInstance {
 
 	invertor_solar_panel_current := promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name:        "solar_invertor_solar_panel_current",
+			Name:        setMetricsName(config, "solar_panel_current"),
 			Help:        "Solar panel current",
 			ConstLabels: constLabels,
 		},
@@ -179,7 +194,7 @@ func StartPrometheus() *PrometheusInstance {
 
 	invertor_solar_panel_voltage := promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name:        "solar_invertor_solar_panel_voltage",
+			Name:        setMetricsName(config, "solar_panel_voltage"),
 			Help:        "Solar Panel Voltage",
 			ConstLabels: constLabels,
 		},
@@ -189,6 +204,7 @@ func StartPrometheus() *PrometheusInstance {
 	return &PrometheusInstance{
 		buildinfo:           build_info,
 		serialnumber:        invertor_serialnumber,
+		devicestatus:        invertor_status,
 		requestsTotal:       requests_total_counter,
 		inputVoltageAC:      invertor_input_voltage_ac,
 		inputVoltageACfrq:   invertor_input_voltage_frequency,
@@ -239,6 +255,9 @@ func (p *PrometheusInstance) Middleware(c *fiber.Ctx) error {
 	p.invertorTemperature.WithLabelValues(port, serialnumber).Set(invertor.InvertorTemp)
 	p.solarPanelCurrent.WithLabelValues(port, serialnumber).Set(invertor.ChargeSolarCurrent)
 	p.solarPanelVoltage.WithLabelValues(port, "ch1", serialnumber).Set(invertor.VoltageDCch1)
+
+	invertor.GetStatus()
+	p.devicestatus.WithLabelValues(port, serialnumber, invertor.DeviceStatus)
 
 	var status int
 

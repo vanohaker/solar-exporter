@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 
+	fiberlog "github.com/gofiber/fiber/v2/log"
 	"github.com/tarm/serial"
 )
 
@@ -52,12 +53,14 @@ type SmartWattEco struct {
 	VoltageDCch1 float64
 	// Серийный номер инвертора
 	SerialNumber string
+	// Статус устройства
+	DeviceStatus string
 }
 
 func parseSerialNumber(message []byte, s *SmartWattEco) {
 	r, err := regexp.Compile(`^\([0-9]{2}(?P<SerialNumber>[0-9]{14}).*`)
 	if err != nil {
-		log.Fatal(err)
+		fiberlog.Error(err.Error())
 	}
 	mathGroupData := r.FindStringSubmatch(string(message))
 	if mathGroupData[r.SubexpIndex("SerialNumber")] == "" {
@@ -71,7 +74,7 @@ func parseVoltage(message []byte, s *SmartWattEco) {
 	// data := invertorVoltageData{}
 	r, err := regexp.Compile(`^\((?P<InputACvoltage>[0-9.]{3,}) (?P<InputACfrq>[0-9.]{2,}) (?P<OutACvoltage>[0-9.]{3,}) (?P<OutACfrq>[0-9.]{2,}) (?P<OutApparentPower>[0-9]{1,}) (?P<OutActivePower>[0-9]{1,}) (?P<LoadPercent>[0-9]{1,}) ... (?P<BatVoltage>[0-9.]{1,}) (?P<ChargeCurrent>[0-9]{1,}) (?P<ChargePercent>[0-9]{1,}) (?P<InvertorTemp>[0-9]{1,}) (?P<ChargeSolarCurrent>[0-9.]{1,}) (?P<VoltageDCch1>[0-9.]{1,}).*`)
 	if err != nil {
-		log.Fatal(err)
+		fiberlog.Error(err.Error())
 	}
 	matchGroupsData := r.FindStringSubmatch(string(message)) // Значения групп без имён групп
 	s.InputACvoltage, err = strconv.ParseFloat(matchGroupsData[r.SubexpIndex("InputACvoltage")], 64)
@@ -129,6 +132,30 @@ func parseVoltage(message []byte, s *SmartWattEco) {
 	}
 }
 
+func parseStatus(message []byte, s *SmartWattEco) {
+	r, err := regexp.Compile(`^\((?P<DeviceStatus>[A-Z]{1}).*`)
+	if err != nil {
+		fiberlog.Error(err.Error())
+	}
+	matchGroupsData := r.FindStringSubmatch(string(message))
+	switch status := matchGroupsData[r.SubexpIndex("DeviceStatus")]; status {
+	case "P":
+		s.DeviceStatus = "Power_On_Mode"
+	case "S":
+		s.DeviceStatus = "Standby_Mode"
+	case "L":
+		s.DeviceStatus = "Line_Mode"
+	case "B":
+		s.DeviceStatus = "Battery_Mode"
+	case "F":
+		s.DeviceStatus = "Fault_Mode"
+	case "H":
+		s.DeviceStatus = "Power_Saving_Mode"
+	default:
+		s.DeviceStatus = "Unknown"
+	}
+}
+
 func Init(s SmartWattEco) (*SmartWattEco, error) {
 	serialSession, err := serial.OpenPort(&serial.Config{
 		Name: s.Port,
@@ -178,6 +205,11 @@ func getData(serial *serial.Port, command []byte) []byte {
 func (s *SmartWattEco) GetVoltage() {
 	result := getData(s.Serial, []byte{0x51, 0x50, 0x49, 0x47, 0x53, 0xB7, 0xA9, 0x0D})
 	parseVoltage(result, s)
+}
+
+func (s *SmartWattEco) GetStatus() {
+	result := getData(s.Serial, []byte{0x51, 0x4D, 0x4F, 0x44, 0x49, 0xC1, 0x0D})
+	parseStatus(result, s)
 }
 
 func (s *SmartWattEco) GetSerialNumber() {
