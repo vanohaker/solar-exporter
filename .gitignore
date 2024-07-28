@@ -1,7 +1,3 @@
-main
-.vscode
-start.bat
-start.sh
-datasample
-dist
-tmp
+/.vscode
+/dist
+/tmp
