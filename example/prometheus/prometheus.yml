@@ -1,0 +1,25 @@
+global:
+  scrape_interval:     15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'prometheus'
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['localhost:9090']
+  - job_name: 'smartwatteco'
+    scrape_interval: 15s
+    static_configs:
+      - targets:
+        - "/dev/virtualcom0"
+        labels:
+          baudrate: "2400"
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_port
+      - source_labels: [baudrate]
+        target_label: __param_baudrate
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: 192.168.88.45:9560
